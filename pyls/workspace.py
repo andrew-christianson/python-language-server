@@ -3,6 +3,9 @@ import io
 import logging
 import os
 import re
+import pickle
+import subprocess
+import sys
 
 import jedi
 
@@ -91,11 +94,31 @@ class Workspace(object):
         files = _utils.find_parents(self._root_path, document_path, ['setup.py']) or []
         return [os.path.dirname(setup_py) for setup_py in files]
 
+    def venv_roots(self, document_path):
+        _versions = []
+        for _file in _utils.find_parents("/", document_path, [".python-version"]) or []:
+            log.info(_file)
+            with open(_file, 'r') as fh:
+                _versions.append(fh.read().strip())
+
+        _paths = []
+        for _version in _versions:
+            other_syspath = subprocess.run(
+                ["python", "-c", "import sys;import pickle;sys.stdout.buffer.write(pickle.dumps(sys.path))"],
+                stdout=subprocess.PIPE,
+                env=dict(list(os.environ.items()) + list({"PYENV_VERSION":_version}.items()))
+                )
+            _paths += pickle.loads(other_syspath.stdout)
+            log.info(_paths)
+
+        return sorted([p for p in set(_paths)], key=_paths.index)
+
     def _create_document(self, doc_uri, source=None, version=None):
         path = uris.to_fs_path(doc_uri)
+        log.info(doc_uri)
         return Document(
             doc_uri, source=source, version=version,
-            extra_sys_path=self.source_roots(path),
+            extra_sys_path=self.source_roots(path) + self.venv_roots(path),
             rope_project_builder=self._rope_project_builder,
         )
 
