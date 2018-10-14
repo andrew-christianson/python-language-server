@@ -103,22 +103,35 @@ class Workspace(object):
 
         _paths = []
         for _version in _versions:
-            other_syspath = subprocess.run(
-                ["python", "-c", "import sys;import pickle;sys.stdout.buffer.write(pickle.dumps(sys.path))"],
+            python_exec = subprocess.run(
+                ["pyenv", "which", "python"],
                 stdout=subprocess.PIPE,
-                env=dict(list(os.environ.items()) + list({"PYENV_VERSION":_version}.items()))
-                )
+                env=dict(list(os.environ.items()) +
+                         list({"PYENV_VERSION": _version}.items()))
+            )
+            python_exec_path = python_exec.stdout.decode().strip()
+            # log.info(python_exec_path)
+
+            other_syspath = subprocess.run(
+                [python_exec_path, "-c",
+                 "import sys;import pickle;sys.stdout.buffer.write(pickle.dumps(sys.path))"],
+                stdout=subprocess.PIPE,
+                env={}
+            )
             _paths += pickle.loads(other_syspath.stdout)
-            log.info(_paths)
 
         return sorted([p for p in set(_paths)], key=_paths.index)
 
     def _create_document(self, doc_uri, source=None, version=None):
         path = uris.to_fs_path(doc_uri)
         log.info(doc_uri)
+        roots = self.venv_roots(path) + self.source_roots(path)
+        # dedupe, maintaining order
+        roots = sorted([r for r in set(roots)], key=roots.index)
+        log.info(roots)
         return Document(
             doc_uri, source=source, version=version,
-            extra_sys_path=self.source_roots(path) + self.venv_roots(path),
+            extra_sys_path=roots,
             rope_project_builder=self._rope_project_builder,
         )
 
